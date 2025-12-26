@@ -1,12 +1,18 @@
+import os
 import json
-import re
 import requests
-from datetime import datetime
-from assistant.db import init_db
-from assistant.tasks import create_task, list_tasks, mark_done, find_open_by_title_fragment
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
-MODEL = "llama3.2"  # <-- MUST match `ollama list` exactly
-CHAT_URL = "http://localhost:11434/api/chat"
+from assistant.db import init_db
+from assistant.tasks import list_tasks
+from assistant.logic import execute_action
+
+MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:latest")
+CHAT_URL = os.environ.get("OLLAMA_CHAT_URL", "http://localhost:11434/api/chat")
 
 SYSTEM_PROMPT = """You are a local-first AI Daily Assistant that converts user requests into structured actions.
 
@@ -56,19 +62,54 @@ User: Add a task to buy AA batteries
 Got it — I added “Buy AA batteries” to your tasks.
 """
 
+def ollama_supports(path: str) -> bool:
+    """
+    Returns True if Ollama responds with something other than 404 for the given path.
+    We use this to select the right endpoint (/api/generate vs /api/chat) reliably.
+    """
+    try:
+        r = requests.get(f"http://localhost:11434{path}", timeout=5)
+        return r.status_code != 404
+    except Exception:
+        return False
 
 def call_ollama(user_text: str) -> str:
-    payload = {
-        "model": MODEL,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_text},
-        ],
-        "stream": False,
-    }
-    r = requests.post(CHAT_URL, json=payload, timeout=300)
+    """
+    Calls Ollama locally using the classic API.
+    Prefers /api/chat if available, otherwise uses /api/generate.
+    Returns the assistant text.
+    """
+    base = "http://localhost:11434"
+
+    # Prefer /api/chat if present
+    if ollama_supports("/api/chat"):
+        url = f"{base}/api/chat"
+        payload = {
+            "model": MODEL,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_text},
+            ],
+            "stream": False,
+        }
+        print("[debug] Calling:", url)
+        r = requests.post(url, json=payload, timeout=300)
+        if not r.ok:
+           raise RuntimeError(f"Ollama error {r.status_code} calling {url}: {r.text}")
+        r.raise_for_status()
+        return r.json()["message"]["content"]
+
+    # Fall back to /api/generate (guaranteed on many installs)
+    url = f"{base}/api/generate"
+    prompt = f"{SYSTEM_PROMPT}\n\nUser: {user_text}\n"
+    payload = {"model": MODEL, "prompt": prompt, "stream": False}
+    print("[debug] Calling:", url)
+    r = requests.post(url, json=payload, timeout=300)
+    if not r.ok:
+        raise RuntimeError(f"Ollama error {r.status_code} calling {url}: {r.text}")
     r.raise_for_status()
-    return r.json()["message"]["content"]
+    return r.json().get("response", "")
+
 
 def extract_first_json_line(text: str) -> dict:
     """
@@ -164,77 +205,50 @@ def split_json_and_message(text: str) -> tuple[dict, str]:
         i += 1
     raise ValueError("Unclosed JSON object")
 
-def execute_action(action: dict) -> str:
-    intent = action.get("intent", "unknown")
-    title = (action.get("title") or "").strip()
-    due = (action.get("due") or "").strip()
-    notes = (action.get("notes") or "").strip()
+app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    if intent in {"create_task", "create_reminder"}:
-        if not title:
-            return "I need a title to save that. Try: 'Add a task: ...'"
-        task_id = create_task(intent=intent, title=title, due=due, notes=notes)
-        return f"Saved ✅ (id={task_id})"
+templates = Jinja2Templates(directory="templates")
 
-    if intent == "list_tasks":
-        rows = list_tasks(status="open")
-        if not rows:
-            return "No open tasks ✅"
-        lines = []
-        for r in rows:
-            due_txt = f" (due {r['due']})" if r["due"] else ""
-            lines.append(f"- #{r['id']} {r['title']}{due_txt}")
-        return "Open tasks:\n" + "\n".join(lines)
-
-    if intent == "mark_done":
-        # simplest: if title provided, find by fragment; else ask user for id later (Phase 2.1)
-        if title:
-            matches = find_open_by_title_fragment(title)
-            if not matches:
-                return f"Couldn't find an open task matching '{title}'."
-            task_id = matches[0]["id"]
-            ok = mark_done(task_id)
-            return f"Marked done ✅ (id={task_id})" if ok else "That task was already done."
-        return "Tell me which task to mark done (e.g., 'Mark task 3 done')."
-
-    if intent == "clarify":
-        qs = action.get("questions", [])
-        if qs:
-            return "I need one more thing:\n- " + "\n- ".join(qs)
-        return "I need a bit more info."
-
-    return "I’m not sure how to do that yet."
-
-def main() -> None:
+@app.on_event("startup")
+def _startup():
     init_db()
-    print("AI Daily Assistant — Phase 1 (Task-first JSON)")
-    print("Type a request. Type 'quit' to exit.\n")
 
-    while True:
-        user = input("You> ").strip()
-        if user.lower() in {"quit", "exit"}:
-            break
-        if not user:
-            continue
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
-        try:
-            raw = call_ollama(user)
-            action, friendly = split_json_and_message(raw)
+@app.get("/api/tasks")
+def api_tasks():
+    return JSONResponse({"open": list_tasks(status="open")})
 
-            print("\nAction JSON>")
-            print(json.dumps(action, ensure_ascii=False))
+@app.post("/api/ingest")
 
-            print("\nAssistant>")
-            print(friendly if friendly else "(No message returned)")
-            print()
+async def api_ingest(req: Request):
+    try:
+        body = await req.json()
+        user_text = (body.get("text") or "").strip()
+        if not user_text:
+            return JSONResponse({"error": "Missing text"}, status_code=400)
 
-            result = execute_action(action)
-            print("System>")
-            print(result)
-            print()
+        raw = call_ollama(user_text)
+        action, friendly = split_json_and_message(raw)
+        system_result = execute_action(action)
 
-        except Exception as e:
-            print(f"\n[error] {type(e).__name__}: {e}\n")
-
-if __name__ == "__main__":
-    main()
+        return JSONResponse({
+            "action": action,
+            "friendly": friendly,
+            "system": system_result
+        })
+    except Exception as e:
+        return JSONResponse(
+            {"error": f"{type(e).__name__}: {e}"},
+            status_code=500
+        )
