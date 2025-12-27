@@ -13,7 +13,7 @@ from assistant.speech import transcribe_wav_file
 
 from assistant.db import init_db
 from assistant.tasks import list_tasks
-from assistant.logic import execute_action
+from assistant.logic import execute_action, route_user_text
 
 MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:latest")
 CHAT_URL = os.environ.get("OLLAMA_CHAT_URL", "http://localhost:11434/api/chat")

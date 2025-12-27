@@ -33,6 +33,15 @@ def mark_done(task_id: int) -> bool:
         conn.commit()
         return cur.rowcount > 0
 
+def delete_task(task_id: int) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM tasks WHERE id=?",
+            (task_id,),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
 def find_open_by_title_fragment(fragment: str):
     frag = f"%{fragment.lower()}%"
     with get_conn() as conn:
