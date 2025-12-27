@@ -1,0 +1,85 @@
+import shutil
+import glob
+import os
+import multiprocessing
+import time
+
+# --- CONFIGURATION ---
+SOURCE_PATH = "/Volumes/ARUN & SHALINI/ARUN & SHALINI _RECEPTION _4-5-14/SELECTED IN ALBUM/CAM_2 SELECTED"
+DEST_PATH = "/Users/arun/OneDrive/Wedding"
+TIMEOUT_SECONDS = 5
+# ---------------------
+
+def copy_worker(source_file, destination_file):
+    try:
+        shutil.copy2(source_file, destination_file)
+    except Exception:
+        pass
+
+def safe_copy():
+    if not os.path.exists(DEST_PATH):
+        os.makedirs(DEST_PATH)
+
+    search_pattern = os.path.join(SOURCE_PATH, "*.JPG")
+    files = glob.glob(search_pattern)
+    files.sort()
+    
+    if not files:
+        print("No files found.")
+        return
+
+    print(f"Found {len(files)} files. Mode: FIRE & FORGET (Timeout: {TIMEOUT_SECONDS}s)")
+
+    success_count = 0
+    skip_count = 0
+    abandoned_processes = []
+
+    for i, file_path in enumerate(files):
+        filename = os.path.basename(file_path)
+        dest_file = os.path.join(DEST_PATH, filename)
+
+        if os.path.exists(dest_file):
+             print(f"[{i+1}/{len(files)}] {filename} ... EXISTS (Skipping)")
+             continue
+
+        print(f"[{i+1}/{len(files)}] Copying: {filename} ... ", end="", flush=True)
+
+        p = multiprocessing.Process(target=copy_worker, args=(file_path, dest_file))
+        p.start()
+
+        # Wait for the specific timeout
+        p.join(TIMEOUT_SECONDS)
+
+        if p.is_alive():
+            # PROCESS IS STUCK.
+            # We try to terminate it, but we DO NOT WAIT (no p.join)
+            p.terminate()
+            
+            # We keep track of it just to not lose the reference, but we move on immediately
+            abandoned_processes.append(p)
+            
+            print("HARD HANG -> ABANDONED & SKIPPED")
+            skip_count += 1
+            
+            # Clean up the partial destination file if possible
+            if os.path.exists(dest_file):
+                try:
+                    os.remove(dest_file)
+                except:
+                    pass
+        else:
+            if p.exitcode == 0 and os.path.exists(dest_file):
+                print("OK")
+                success_count += 1
+            else:
+                print("FAILED")
+                skip_count += 1
+
+    print("-" * 30)
+    print(f"Done. Success: {success_count}, Skipped: {skip_count}")
+    print(f"Note: There are {len(abandoned_processes)} background processes still stuck on hardware.")
+    print("They will disappear when you eject the CD or restart.")
+
+if __name__ == "__main__":
+    multiprocessing.freeze_support()
+    safe_copy()

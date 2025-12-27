@@ -31,6 +31,9 @@
     <br />
     <button id="send">Send</button>
     <span id="status" class="muted"></span>
+    <br>
+    <button id="rec">Start Recording</button>
+    <button id="stop" disabled>Stop</button>
   </div>
 
   <div class="row" style="margin-top:16px;">
@@ -109,6 +112,69 @@ if ("serviceWorker" in navigator) {
     .then(() => console.log("Service worker registered"))
     .catch((err) => console.log("Service worker error", err));
 }
+
+
+let mediaRecorder;
+let chunks = [];
+
+async function startRecording() {
+  document.getElementById("status").textContent = "Requesting mic…";
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+  chunks = [];
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+
+  mediaRecorder.onstop = async () => {
+    document.getElementById("status").textContent = "Uploading audio…";
+    const blob = new Blob(chunks, { type: "audio/webm" });
+
+    const form = new FormData();
+    form.append("audio", blob, "audio.webm");
+
+    const r = await fetch("/api/ingest_audio", { method: "POST", body: form });
+    const rawText = await r.text();
+
+    let data;
+    try { data = JSON.parse(rawText); } catch { data = { error: rawText }; }
+
+    if (!r.ok) {
+      document.getElementById("system").textContent = JSON.stringify(data, null, 2);
+      document.getElementById("status").textContent = "Error";
+      return;
+    }
+
+    document.getElementById("friendly").textContent = data.friendly || "";
+    document.getElementById("system").textContent = data.system || "";
+    document.getElementById("action").textContent = JSON.stringify(data.action || {}, null, 2);
+
+    // show transcript in the assistant message panel
+    document.getElementById("friendly").textContent =
+      (data.transcript ? ("You said: " + data.transcript + "\n\n") : "") +
+      (data.friendly || "");
+
+    document.getElementById("status").textContent = "Done";
+    await refreshTasks();
+  };
+
+  mediaRecorder.start();
+  document.getElementById("status").textContent = "Recording…";
+  document.getElementById("rec").disabled = true;
+  document.getElementById("stop").disabled = false;
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+  }
+  document.getElementById("rec").disabled = false;
+  document.getElementById("stop").disabled = true;
+  document.getElementById("status").textContent = "Stopping…";
+}
+
+document.getElementById("rec").addEventListener("click", startRecording);
+document.getElementById("stop").addEventListener("click", stopRecording);
+
 </script>
 </body>
 </html>

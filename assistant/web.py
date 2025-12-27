@@ -1,11 +1,15 @@
 import os
 import json
 import requests
+import tempfile
+import subprocess
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi import UploadFile, File
+from assistant.speech import transcribe_wav_file
 
 from assistant.db import init_db
 from assistant.tasks import list_tasks
@@ -230,7 +234,6 @@ def api_tasks():
     return JSONResponse({"open": list_tasks(status="open")})
 
 @app.post("/api/ingest")
-
 async def api_ingest(req: Request):
     try:
         body = await req.json()
@@ -252,3 +255,45 @@ async def api_ingest(req: Request):
             {"error": f"{type(e).__name__}: {e}"},
             status_code=500
         )
+    
+@app.post("/api/ingest_audio")
+async def api_ingest_audio(audio: UploadFile = File(...)):
+    """
+    Receives an audio file (WAV recommended), transcribes locally, then
+    runs the same pipeline as /api/ingest (LLM -> action -> execute).
+    """
+    try:
+        # Save upload to a temp file
+        suffix = ".wav"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp_in:
+            content = await audio.read()
+            tmp_in.write(content)
+            in_path = tmp_in.name
+
+        out_path = in_path.replace(".webm", ".wav")
+
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", in_path, out_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+        
+        transcript = transcribe_wav_file(out_path)
+
+        if not transcript:
+            return JSONResponse({"error": "Could not transcribe audio"}, status_code=400)
+
+        raw = call_ollama(transcript)
+        action, friendly = split_json_and_message(raw)
+        system_result = execute_action(action)
+
+        return JSONResponse({
+            "transcript": transcript,
+            "action": action,
+            "friendly": friendly,
+            "system": system_result
+        })
+
+    except Exception as e:
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
