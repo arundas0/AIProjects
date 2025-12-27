@@ -23,4 +23,13 @@ def init_db() -> None:
             done_at TEXT NOT NULL DEFAULT ''
         );
         """)
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS runs (
+            run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_text TEXT NOT NULL,
+            action_json TEXT NOT NULL,
+            system_result TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """)
         conn.commit()

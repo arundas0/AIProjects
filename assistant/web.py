@@ -11,10 +11,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi import UploadFile, File
 from assistant.speech import transcribe_wav_file
-
+from assistant.runs import create_run
+from assistant.trace import build_agent_trace
 from assistant.db import init_db
 from assistant.tasks import list_tasks
 from assistant.logic import execute_action, route_user_text
+from assistant.runs import get_run
 
 MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:latest")
 CHAT_URL = os.environ.get("OLLAMA_CHAT_URL", "http://localhost:11434/api/chat")
@@ -264,14 +266,32 @@ async def api_ingest(req: Request):
             action, friendly = split_json_and_message(raw)
 
         system_result = execute_action(action)
-        
+
+        remaining = None
+        try:
+            tasks = list_tasks(status="open")  # adjust to your signature
+            remaining = len(tasks)
+        except Exception:
+            remaining = None
+
+        trace = build_agent_trace(
+            user_text=user_text,
+            action=action,
+            system_result=system_result,
+            remaining_tasks=remaining,
+        )
+
+        run_id = create_run(user_text=user_text, action=action, system_result=system_result)
+
         if system_result.startswith("Couldn't find") or system_result.startswith("Failed") or system_result.startswith("Tell me"):
             friendly = system_result
 
         return JSONResponse({
             "action": action,
             "friendly": friendly,
-            "system": system_result
+            "system": system_result,
+            "run_id": run_id,
+            "trace": trace,
         })
     except Exception as e:
         traceback.print_exc()
@@ -317,6 +337,23 @@ async def api_ingest_audio(audio: UploadFile = File(...)):
             action, friendly = split_json_and_message(raw)
 
         system_result = execute_action(action)
+
+        remaining = None
+        try:
+            tasks = list_tasks(status="open")  # adjust to your signature
+            remaining = len(tasks)
+        except Exception:
+            remaining = None
+
+        trace = build_agent_trace(
+            user_text=transcript,
+            action=action,
+            system_result=system_result,
+            remaining_tasks=remaining,
+        )
+
+        run_id = create_run(user_text=transcript, action=action, system_result=system_result)
+
         if system_result.startswith("Couldn't find") or system_result.startswith("Failed") or system_result.startswith("Tell me"):
             friendly = system_result
         
@@ -329,3 +366,11 @@ async def api_ingest_audio(audio: UploadFile = File(...)):
 
     except Exception as e:
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
+from assistant.runs import get_run
+
+@app.get("/api/runs/{run_id}")
+def api_get_run(run_id: int):
+    run = get_run(run_id)
+    if not run:
+        return JSONResponse({"error": "Run not found"}, status_code=404)
+    return JSONResponse(run)

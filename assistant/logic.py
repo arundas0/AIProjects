@@ -160,23 +160,64 @@ def route_user_text(user_text: str) -> dict | None:
     # -----------------------------
     # DELETE TASK (your existing code)
     # -----------------------------
-    if not (re.search(r"\b(delete|remove|trash)\b", user_text, re.I) and re.search(r"\btask\b", user_text, re.I)):
+    delete_trigger = (
+            re.search(r"\b(delete|remove|cancel|trash)\b", user_text, re.I) 
+            and (
+                re.search(r"\btask\b", user_text, re.I) 
+                or re.search(r"(?:#|id\s*)\d+", user_text, re.I)
+            )
+        )
+
+    if not delete_trigger:
         return None
 
     tasks = list_tasks(status="open")
 
-    if re.search(r"\bno due\b|\bno due date\b|\bwithout (a )?(date|due)\b", user_text, re.I):
-        candidates = [t for t in tasks if not t.get("due")]
-    else:
-        candidates = tasks
-
+    # 1. Check for explicit ID match (Highest Priority)
     m_id = re.search(r"(?:#|id\s*)(\d+)\b", user_text, re.I)
     if m_id:
         task_id = int(m_id.group(1))
-        return {"intent": "delete_task", "id": task_id, "title": "", "due": "", "notify": ["cli"], "notes": "", "questions": []}
+        return {
+            "intent": "delete_task",
+            "id": task_id,
+            "title": "",
+            "due": "",
+            "notify": ["cli"],
+            "notes": "",
+            "questions": []
+        }
 
+    # 2. Heuristic: Extract title fragment
+    frag = user_text
+    # Remove command words
+    frag = re.sub(r"(?i)\b(delete|remove|cancel|trash)\b", "", frag)
+    # Remove "task"
+    frag = re.sub(r"(?i)\btask\b", "", frag)
+    # Clean up whitespace/quotes
+    frag = frag.strip().strip("'\"")
+
+    candidates = tasks
+
+    # 3. Filter candidates
+    # Special case: "Delete tasks with no due date"
+    if re.search(r"\bno due\b|\bno due date\b|\bwithout (a )?(date|due)\b", user_text, re.I):
+        candidates = [t for t in tasks if not t.get("due")]
+    elif frag:
+        # Filter by title fragment
+        f = frag.lower()
+        candidates = [t for t in tasks if f in (t.get("title") or "").lower()]
+
+    # 4. Determine Action based on matches
     if len(candidates) == 1:
-        return {"intent": "delete_task", "id": candidates[0]["id"], "title": "", "due": "", "notify": ["cli"], "notes": "", "questions": []}
+        return {
+            "intent": "delete_task",
+            "id": candidates[0]["id"],
+            "title": "",
+            "due": "",
+            "notify": ["cli"],
+            "notes": "",
+            "questions": []
+        }
 
     if len(candidates) > 1:
         options = []
@@ -202,5 +243,5 @@ def route_user_text(user_text: str) -> dict | None:
         "due": "",
         "notify": ["cli"],
         "notes": "",
-        "questions": ["I couldn't find any matching open tasks. What’s the exact task title?"],
+        "questions": ["I couldn't find a matching open task to delete. What’s the exact task title or id?"],
     }

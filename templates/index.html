@@ -52,6 +52,8 @@
       <pre id="tasks"></pre>
     </div>
   </div>
+  <div id="response"></div>
+  <div id="agent-trace"></div>
 
 <script>
 async function refreshTasks() {
@@ -176,6 +178,58 @@ function stopRecording() {
 
 document.getElementById("rec").addEventListener("click", startRecording);
 document.getElementById("stop").addEventListener("click", stopRecording);
+
+
+  function escapeHtml(s) {
+    return (s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function renderTrace(trace, runId) {
+    if (!trace || !trace.items) {
+      document.getElementById("agent-trace").innerHTML = "";
+      return;
+    }
+
+    const rows = trace.items.map(item => {
+      return `<div class="trace-row">
+        <div class="trace-label">${escapeHtml(item.label)}</div>
+        <div class="trace-value">${escapeHtml(item.value)}</div>
+      </div>`;
+    }).join("");
+
+    document.getElementById("agent-trace").innerHTML = `
+      <details class="trace">
+        <summary>Agent trace (run #${runId})</summary>
+        <div class="trace-body">
+          ${rows}
+          <details class="trace-raw">
+            <summary>Raw action JSON</summary>
+            <pre>${escapeHtml(JSON.stringify(trace.raw_action, null, 2))}</pre>
+          </details>
+        </div>
+      </details>
+    `;
+  }
+
+  async function sendText(text) {
+    const res = await fetch("/api/ingest", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({text})
+    });
+    const data = await res.json();
+
+    // Your existing rendering
+    document.getElementById("response").innerText = data.friendly || "";
+
+    // New: render trace
+    renderTrace(data.trace, data.run_id);
+  }
 
 </script>
 </body>
