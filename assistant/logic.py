@@ -42,6 +42,10 @@ def execute_action(action: dict) -> str:
         return "Tell me which task to delete."
 
     if intent == "mark_done":
+        task_id = action.get("id")
+        if task_id:
+            ok = mark_done(int(task_id))
+            return f"Marked done ✅ (id={task_id})" if ok else "That task was already done."
         if title:
             matches = find_open_by_title_fragment(title)
             if not matches:
@@ -59,36 +63,121 @@ def execute_action(action: dict) -> str:
 
     return "I’m not sure how to do that yet."
 
-
 def route_user_text(user_text: str) -> dict | None:
     """
-    Summary: Intercepts delete-task requests and returns an action dict
-    without calling the LLM. Returns None if it should fall back to LLM.
+    Summary: Intercepts delete-task and mark-done requests and returns an action dict
+    grounded in real DB tasks (by id). Returns None if it should fall back to LLM.
     """
 
-    # Detect delete/remove/trash + task
+    # -----------------------------
+    # MARK DONE / COMPLETE TASK
+    # -----------------------------
+    # Examples it should catch:
+    # - "Set DD batteries task to be done"
+    # - "Mark Buy DD batteries done"
+    # - "Complete task #9"
+    # - "Done #9"
+    mark_done_trigger = (
+        re.search(r"\b(mark|set|complete|finish|done)\b", user_text, re.I)
+        and re.search(r"\b(done|complete|completed|finished)\b|\bto be done\b", user_text, re.I)
+    ) or re.search(r"\b(done|complete)\s*#\d+\b", user_text, re.I)
+
+    if mark_done_trigger:
+        tasks = list_tasks(status="open")
+
+        # If user mentions an id like "#9" or "id 9", use it directly
+        m_id = re.search(r"(?:#|id\s*)(\d+)\b", user_text, re.I)
+        if m_id:
+            task_id = int(m_id.group(1))
+            return {
+                "intent": "mark_done",
+                "id": task_id,
+                "title": "",
+                "due": "",
+                "notify": ["cli"],
+                "notes": "",
+                "questions": [],
+            }
+
+        # Heuristic: extract a title fragment from the text
+        # "Set DD batteries task to be done" -> "DD batteries"
+        frag = user_text
+
+        # Remove common command words
+        frag = re.sub(r"(?i)\b(set|mark|complete|finish)\b", "", frag)
+        # Remove "task ..." tail
+        frag = re.sub(r"(?i)\btask\b.*$", "", frag)
+        # Remove "to be done" tail
+        frag = re.sub(r"(?i)\bto be done\b", "", frag)
+        # Remove done/complete tokens
+        frag = re.sub(r"(?i)\b(done|complete|completed|finished)\b", "", frag)
+
+        frag = frag.strip().strip("'\"")
+
+        candidates = tasks
+        if frag:
+            f = frag.lower()
+            candidates = [t for t in tasks if f in (t.get("title") or "").lower()]
+
+        if len(candidates) == 1:
+            return {
+                "intent": "mark_done",
+                "id": candidates[0]["id"],
+                "title": "",
+                "due": "",
+                "notify": ["cli"],
+                "notes": "",
+                "questions": [],
+            }
+
+        if len(candidates) > 1:
+            options = []
+            for t in candidates[:10]:
+                due_txt = f"(due {t['due']})" if t.get("due") else "(no due date)"
+                options.append(f"#{t['id']} {t['title']} {due_txt}")
+
+            return {
+                "intent": "clarify",
+                "title": "",
+                "due": "",
+                "notify": ["cli"],
+                "notes": "",
+                "questions": [
+                    "Which task id should I mark done? Reply like: done #9",
+                    "Here are the closest matches:\n" + "\n".join(options),
+                ],
+            }
+
+        return {
+            "intent": "clarify",
+            "title": "",
+            "due": "",
+            "notify": ["cli"],
+            "notes": "",
+            "questions": ["I couldn't find a matching open task. What’s the exact task title or id (e.g., #9)?"],
+        }
+
+    # -----------------------------
+    # DELETE TASK (your existing code)
+    # -----------------------------
     if not (re.search(r"\b(delete|remove|trash)\b", user_text, re.I) and re.search(r"\btask\b", user_text, re.I)):
         return None
 
     tasks = list_tasks(status="open")
 
-    # If user said "no due date", prefer due==None/""
     if re.search(r"\bno due\b|\bno due date\b|\bwithout (a )?(date|due)\b", user_text, re.I):
         candidates = [t for t in tasks if not t.get("due")]
     else:
         candidates = tasks
 
-    # If user mentions an id like "#7" or "id 7", use it directly
     m_id = re.search(r"(?:#|id\s*)(\d+)\b", user_text, re.I)
     if m_id:
         task_id = int(m_id.group(1))
         return {"intent": "delete_task", "id": task_id, "title": "", "due": "", "notify": ["cli"], "notes": "", "questions": []}
 
-    # If exactly one candidate, delete by id (preferred) but we’ll pass title fallback too
     if len(candidates) == 1:
         return {"intent": "delete_task", "id": candidates[0]["id"], "title": "", "due": "", "notify": ["cli"], "notes": "", "questions": []}
 
-    # If ambiguous, ask a specific question and show options
     if len(candidates) > 1:
         options = []
         for t in candidates[:10]:
@@ -107,7 +196,6 @@ def route_user_text(user_text: str) -> dict | None:
             ],
         }
 
-    # No matches
     return {
         "intent": "clarify",
         "title": "",

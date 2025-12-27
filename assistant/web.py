@@ -3,6 +3,7 @@ import json
 import requests
 import tempfile
 import subprocess
+import traceback
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -209,6 +210,20 @@ def split_json_and_message(text: str) -> tuple[dict, str]:
         i += 1
     raise ValueError("Unclosed JSON object")
 
+def default_friendly_for(action: dict) -> str:
+    intent = action.get("intent")
+
+    if intent == "clarify":
+        return "Quick question so I delete the right one."
+
+    if intent == "delete_task":
+        return "Done — I deleted that task."
+
+    if intent == "mark_done":
+        return "All set — I marked it as done."
+
+    return ""
+
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.add_middleware(
@@ -240,10 +255,18 @@ async def api_ingest(req: Request):
         user_text = (body.get("text") or "").strip()
         if not user_text:
             return JSONResponse({"error": "Missing text"}, status_code=400)
+        routed = route_user_text(user_text)
+        if routed is not None:
+            action = routed
+            friendly = default_friendly_for(action)  # optional; you can synthesize one if you want
+        else:
+            raw = call_ollama(user_text)
+            action, friendly = split_json_and_message(raw)
 
-        raw = call_ollama(user_text)
-        action, friendly = split_json_and_message(raw)
         system_result = execute_action(action)
+        
+        if system_result.startswith("Couldn't find") or system_result.startswith("Failed") or system_result.startswith("Tell me"):
+            friendly = system_result
 
         return JSONResponse({
             "action": action,
@@ -251,6 +274,7 @@ async def api_ingest(req: Request):
             "system": system_result
         })
     except Exception as e:
+        traceback.print_exc()
         return JSONResponse(
             {"error": f"{type(e).__name__}: {e}"},
             status_code=500
@@ -284,10 +308,18 @@ async def api_ingest_audio(audio: UploadFile = File(...)):
         if not transcript:
             return JSONResponse({"error": "Could not transcribe audio"}, status_code=400)
 
-        raw = call_ollama(transcript)
-        action, friendly = split_json_and_message(raw)
-        system_result = execute_action(action)
+        routed = route_user_text(transcript)
+        if routed is not None:
+            action = routed
+            friendly = default_friendly_for(action)  # optional; you can synthesize one if you want
+        else:
+            raw = call_ollama(transcript)
+            action, friendly = split_json_and_message(raw)
 
+        system_result = execute_action(action)
+        if system_result.startswith("Couldn't find") or system_result.startswith("Failed") or system_result.startswith("Tell me"):
+            friendly = system_result
+        
         return JSONResponse({
             "transcript": transcript,
             "action": action,
