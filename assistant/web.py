@@ -47,6 +47,7 @@ Field rules:
 - If essential info is missing (like date/time for a reminder), set intent="clarify" and ask 1-3 questions.
 
 Decision rules:
+- If the user input begins with an action verb (e.g., take, buy, email, call, finish), default to intent="create_task" unless a date AND time are explicitly provided.
 - Reminders with time/date -> create_reminder
 - General todo items -> create_task
 - Asking to see tasks -> list_tasks
@@ -358,10 +359,11 @@ async def api_ingest_audio(audio: UploadFile = File(...)):
             friendly = system_result
         
         return JSONResponse({
-            "transcript": transcript,
             "action": action,
             "friendly": friendly,
-            "system": system_result
+            "system": system_result,
+            "run_id": run_id,
+            "trace": trace,
         })
 
     except Exception as e:

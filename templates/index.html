@@ -99,6 +99,7 @@ async function send() {
     document.getElementById("friendly").textContent = data.friendly || "";
     document.getElementById("system").textContent = data.system || "";
     document.getElementById("status").textContent = "Done";
+    renderTrace(data.trace, data.run_id);
     await refreshTasks();
   } catch (e) {
     document.getElementById("status").textContent = "Failed";

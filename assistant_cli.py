@@ -174,7 +174,7 @@ def execute_action(action: dict) -> str:
         if not title:
             return "I need a title to save that. Try: 'Add a task: ...'"
         task_id = create_task(intent=intent, title=title, due=due, notes=notes)
-        return f"Saved ✅ (id={task_id})"
+        return f"Created ✅ (id={task_id})"
 
     if intent == "list_tasks":
         rows = list_tasks(status="open")

@@ -1,7 +1,10 @@
 import json
 from typing import Any, Dict, Optional
 from assistant.db import get_conn
-from assistant.timeutil import now_iso  # or wherever now_iso() lives
+from datetime import datetime, timezone
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 def create_run(user_text: str, action: Dict[str, Any], system_result: str) -> int:
     created_at = now_iso()
