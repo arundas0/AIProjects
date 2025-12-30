@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Agent Debate</title>
+    <style>
+      body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 0; background:#0b0f17; color:#e9eefc; }
+      .wrap { max-width: 980px; margin: 0 auto; padding: 28px 18px; }
+      h1 { font-size: 22px; margin: 0 0 14px; }
+      .card { background:#121a2b; border:1px solid #1f2a44; border-radius: 14px; padding: 14px; margin: 12px 0; }
+      label { display:block; font-size: 13px; opacity: 0.9; margin: 10px 0 6px; }
+      textarea, input, select {
+        width: 100%; box-sizing: border-box;
+        background:#0b1222; color:#e9eefc;
+        border:1px solid #223053; border-radius: 12px;
+        padding: 10px 12px; font-size: 14px;
+      }
+      textarea { min-height: 90px; resize: vertical; }
+      .row { display:flex; gap: 10px; align-items:flex-end; }
+      .row > div { flex: 1; }
+      button {
+        background:#3b82f6; color:white; border:0;
+        padding: 10px 14px; border-radius: 12px;
+        font-weight: 600; cursor: pointer;
+      }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      .muted { font-size: 12px; opacity: 0.75; }
+      pre { white-space: pre-wrap; word-break: break-word; background:#0b1222; border:1px solid #223053; padding: 10px; border-radius: 12px; overflow:auto; }
+      details { border:1px solid #223053; border-radius: 12px; padding: 10px 12px; background:#0b1222; }
+      summary { cursor: pointer; font-weight: 600; }
+      .pill { display:inline-block; padding: 3px 10px; border-radius: 999px; border:1px solid #223053; background:#0b1222; font-size: 12px; opacity: 0.9; margin-left: 8px; }
+      .error { color:#fecaca; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Multi-Agent Debate</h1>
+
+      <div class="card">
+        <label>Question</label>
+        <textarea id="question" placeholder="e.g., Should I switch from Slack to Teams for a 20-person startup?"></textarea>
+
+        <label>Context (optional)</label>
+        <textarea id="context" placeholder="Add constraints, goals, background..."></textarea>
+
+        <div class="row">
+          <div>
+            <label>Provider</label>
+            <select id="provider">
+              <option value="openai">OpenAI</option>
+              <option value="ollama">Ollama (local)</option>
+            </select>
+            <div class="muted">Tip: use OpenAI if Ollama is timing out.</div>
+          </div>
+
+          <div>
+            <label>OpenAI model (optional)</label>
+            <input id="openai_model" placeholder="e.g., gpt-4o-mini" />
+          </div>
+
+          <div>
+            <label>Ollama model (optional)</label>
+            <input id="ollama_model" placeholder="e.g., llama3.2:3b" />
+          </div>
+
+          <div style="flex:0 0 auto">
+            <button id="runBtn" onclick="runDebate()">Debate</button>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Ollama base URL (optional)</label>
+            <input id="ollama_url" placeholder="http://127.0.0.1:11434" />
+          </div>
+          <div>
+            <label>Ollama timeout (seconds)</label>
+            <input id="ollama_timeout" type="number" value="180" />
+          </div>
+        </div>
+      </div>
+
+      <div id="status" class="muted"></div>
+
+      <div id="output"></div>
+    </div>
+
+    <script>
+      function el(id) { return document.getElementById(id); }
+
+      function pretty(obj) {
+        return JSON.stringify(obj, null, 2);
+      }
+
+      function section(title, obj, badgeText) {
+        const details = document.createElement("details");
+        const summary = document.createElement("summary");
+        summary.textContent = title;
+        if (badgeText) {
+          const pill = document.createElement("span");
+          pill.className = "pill";
+          pill.textContent = badgeText;
+          summary.appendChild(pill);
+        }
+        const pre = document.createElement("pre");
+        pre.textContent = pretty(obj);
+        details.appendChild(summary);
+        details.appendChild(pre);
+        return details;
+      }
+
+      async function runDebate() {
+        const question = el("question").value.trim();
+        const context = el("context").value.trim();
+        const provider = el("provider").value;
+
+        if (!question) {
+          el("status").innerHTML = '<span class="error">Please enter a question.</span>';
+          return;
+        }
+
+        const payload = {
+          question,
+          context,
+          provider,
+          openai_model: el("openai_model").value.trim() || null,
+          ollama_model: el("ollama_model").value.trim() || null,
+          ollama_base_url: el("ollama_url").value.trim() || null,
+          ollama_timeout: parseInt(el("ollama_timeout").value || "180", 10),
+        };
+
+        el("runBtn").disabled = true;
+        el("status").textContent = "Running debate…";
+        el("output").innerHTML = "";
+
+        try {
+          const res = await fetch("/api/debate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`HTTP ${res.status}: ${text}`);
+          }
+
+          const data = await res.json();
+
+          el("status").textContent = "Done.";
+
+          const out = el("output");
+
+          // Verdict up top
+          const verdictCard = document.createElement("div");
+          verdictCard.className = "card";
+          const h = document.createElement("div");
+          h.style.fontWeight = "700";
+          h.style.marginBottom = "8px";
+          h.textContent = "Judge Verdict";
+          verdictCard.appendChild(h);
+
+          const pre = document.createElement("pre");
+          pre.textContent = pretty(data.verdict);
+          verdictCard.appendChild(pre);
+          out.appendChild(verdictCard);
+
+          // Openings / Critiques collapsible
+          const openingsCard = document.createElement("div");
+          openingsCard.className = "card";
+          openingsCard.appendChild(document.createTextNode("Openings"));
+          openingsCard.appendChild(document.createElement("div")).className="muted";
+          openingsCard.lastChild.textContent="(Click to expand each agent)";
+          openingsCard.appendChild(document.createElement("div")).style.marginTop="10px";
+          const openingsWrap = openingsCard.lastChild;
+
+          Object.entries(data.openings).forEach(([role, obj]) => {
+            openingsWrap.appendChild(section(role, obj, "opening"));
+          });
+          out.appendChild(openingsCard);
+
+          const critiquesCard = document.createElement("div");
+          critiquesCard.className = "card";
+          critiquesCard.appendChild(document.createTextNode("Critiques"));
+          critiquesCard.appendChild(document.createElement("div")).className="muted";
+          critiquesCard.lastChild.textContent="(Click to expand each agent)";
+          critiquesCard.appendChild(document.createElement("div")).style.marginTop="10px";
+          const critiquesWrap = critiquesCard.lastChild;
+
+          Object.entries(data.critiques).forEach(([role, obj]) => {
+            critiquesWrap.appendChild(section(role, obj, "critique"));
+          });
+          out.appendChild(critiquesCard);
+
+          // Debug trace (optional)
+          const traceCard = document.createElement("div");
+          traceCard.className = "card";
+          traceCard.appendChild(document.createTextNode("Trace (debug)"));
+          traceCard.appendChild(document.createElement("div")).className="muted";
+          traceCard.lastChild.textContent="(Raw phase-by-phase outputs)";
+          traceCard.appendChild(document.createElement("div")).style.marginTop="10px";
+          traceCard.lastChild.appendChild(section("trace", data.trace, "debug"));
+          out.appendChild(traceCard);
+
+        } catch (e) {
+          el("status").innerHTML = `<span class="error">Error: ${e.message}</span>`;
+        } finally {
+          el("runBtn").disabled = false;
+        }
+      }
+    </script>
+  </body>
+</html>

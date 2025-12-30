@@ -258,7 +258,9 @@ async def api_ingest(req: Request):
         user_text = (body.get("text") or "").strip()
         if not user_text:
             return JSONResponse({"error": "Missing text"}, status_code=400)
+        
         routed = route_user_text(user_text)
+        
         if routed is not None:
             action = routed
             friendly = default_friendly_for(action)  # optional; you can synthesize one if you want
