@@ -10,8 +10,8 @@ class Config:
     
     # Ollama configuration
     OLLAMA_URL = "http://localhost:11434/api/generate"
-    OLLAMA_MODEL = "llama3.2:latest"
-    OLLAMA_TIMEOUT = 180
+    OLLAMA_MODEL = "gemma3:1b"
+    OLLAMA_TIMEOUT = 300
     
     # Flask configuration
     FLASK_HOST = "127.0.0.1"

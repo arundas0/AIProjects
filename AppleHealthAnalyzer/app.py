@@ -19,7 +19,10 @@ parser = HealthDataParser(Config.EXPORT_FILE)
 cache = DataCache(parser, HealthDataAnalyzer)
 ai_service = AIService(Config.OLLAMA_URL, Config.OLLAMA_MODEL, Config.OLLAMA_TIMEOUT)
 chart_generator = ChartGenerator()
-ai_service.warm_up()
+
+# Warm up Ollama in the background so app starts immediately
+import threading
+threading.Thread(target=ai_service.warm_up, daemon=True).start()
 
 # HTML Template (in production, move to templates/index.html)
 HTML_TEMPLATE = """
@@ -245,11 +248,15 @@ HTML_TEMPLATE = """
                 <div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div></div>`;
             document.getElementById('messages').appendChild(loadingDiv);
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 min timeout
                 const response = await fetch('/api/ask', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ question })
+                    body: JSON.stringify({ question }),
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
                 const data = await response.json();
                 loadingDiv.remove();
                 addMessage('assistant', data.answer, data.chart);

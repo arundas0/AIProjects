@@ -41,7 +41,7 @@ class ChartGenerator:
         if not heart_rate or not heart_rate.get('daily_data'):
             return None
         
-        data = heart_rate['daily_data'][-20:]  # Last 20 readings
+        data = heart_rate['daily_data']  # All available data
         
         return {
             'type': 'line',

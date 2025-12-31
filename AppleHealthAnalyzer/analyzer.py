@@ -50,7 +50,7 @@ class HealthDataAnalyzer:
             'median': statistics.median(values),
             'min': min(values),
             'max': max(values),
-            'daily_data': daily_data[-30:],  # Last 30 days
+            'daily_data': daily_data[-365:],  # Last 365 days
             'unit': self._get_unit(metric_type)
         }
     

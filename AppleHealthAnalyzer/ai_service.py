@@ -13,7 +13,7 @@ class AIService:
     
     def query(self, prompt: str) -> str:
         """Send a prompt to Ollama and get the response"""
-        stream_timeout_s = min(self.timeout, 180)
+        stream_timeout_s = self.timeout
         payload = {
             "model": self.model,
             "prompt": prompt,
@@ -94,17 +94,18 @@ class AIService:
     def _build_health_prompt(health_summary: Dict, question: str) -> str:
         """Build prompt for health data analysis"""
         aggregations = health_summary.get('aggregations', {})
-        trimmed = _trim_aggregations_for_question(aggregations, question, max_rows=60)
+        trimmed = _trim_aggregations_for_question(aggregations, question, max_rows=365)
 
         prompt = (
             "You are analyzing Apple Health data.\n"
             "Use ONLY the aggregated tables provided below to answer the user's question.\n"
             "If data is missing, say so briefly.\n\n"
             f"User question: {question}\n\n"
-            "Aggregated tables (JSON):\n"
+            "Aggregated tables (CSV format):\n"
         )
 
-        prompt += json.dumps(trimmed or {}, ensure_ascii=True, indent=2)
+        # Convert each table to CSV format for token efficiency
+        prompt += _aggregations_to_csv(trimmed or {})
 
         prompt += (
             "\n\nProvide a clear, helpful answer with specific insights and actionable recommendations. "
@@ -118,7 +119,7 @@ def _trim_aggregations_for_question(
     aggregations: Dict,
     question: str,
     *,
-    max_rows: int = 14,
+    max_rows: int = 365,
 ) -> Dict:
     """
     Keep only relevant tables and limit row counts to shrink the prompt.
@@ -151,6 +152,35 @@ def _trim_aggregations_for_question(
             trimmed[table] = rows
 
     return trimmed
+
+
+def _aggregations_to_csv(aggregations: Dict) -> str:
+    """
+    Convert aggregation tables from dict to CSV format.
+    This reduces token count significantly while preserving all data.
+    """
+    if not aggregations:
+        return ""
+
+    lines = []
+    for table_name, rows in aggregations.items():
+        lines.append(f"## {table_name}")
+        if not isinstance(rows, list) or not rows:
+            lines.append("(no data)")
+            continue
+
+        # Get headers from the first row
+        headers = list(rows[0].keys())
+        lines.append(",".join(headers))
+
+        # Add data rows
+        for row in rows:
+            values = [str(row.get(h, "")) for h in headers]
+            lines.append(",".join(values))
+
+        lines.append("")  # blank line between tables
+
+    return "\n".join(lines)
 
 
 def _get_connection_error_message() -> str:
