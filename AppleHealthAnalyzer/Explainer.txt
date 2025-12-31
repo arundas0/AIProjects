@@ -1,0 +1,59 @@
+User Browser
+  |
+  |  GET /
+  v
+Flask app (app.py) --------------------------------------+
+  |                                                     |
+  |  GET /api/health-data                               |
+  v                                                     |
+DataCache (cache.py)                                    |
+  |                                                     |
+  |  parse export.xml if needed                         |
+  v                                                     |
+HealthDataParser (parser.py)                            |
+  |                                                     |
+  v                                                     |
+HealthDataAnalyzer (analyzer.py)                        |
+  |                                                     |
+  v                                                     |
+JSON summary (steps, heart_rate, workouts) -------------+
+  |
+  |  UI renders stats
+  |
+  |  POST /api/ask  { question }
+  v
+Flask app (app.py)
+  |
+  |  get analyzer summary
+  |  build chart (optional)
+  v
+ChartGenerator (chart_generator.py) -> chart config or None
+  |
+  |  build prompt + call LLM
+  v
+AIService (ai_service.py) -> Ollama /api/generate
+  |
+  v
+Response { answer, chart }
+  |
+  v
+UI renders assistant reply + chart
+
+Sequence Diagram (User question flow)
+
+User -> Browser: Ask question
+Browser -> Flask app (app.py): POST /api/ask {question}
+Flask app (app.py) -> DataCache (cache.py): get_analyzer()
+DataCache (cache.py) -> HealthDataParser (parser.py): parse() [if cache stale]
+HealthDataParser (parser.py) -> DataCache (cache.py): records + workouts
+DataCache (cache.py) -> HealthDataAnalyzer (analyzer.py): new analyzer(records, workouts)
+Flask app (app.py) -> HealthDataAnalyzer (analyzer.py): get_summary()
+HealthDataAnalyzer (analyzer.py) -> Flask app (app.py): summary
+Flask app (app.py) -> ChartGenerator (chart_generator.py): generate_chart(question, summary)
+ChartGenerator (chart_generator.py) -> Flask app (app.py): chart config or None
+Flask app (app.py) -> AIService (ai_service.py): generate_health_insights(summary, question)
+AIService (ai_service.py) -> Ollama API: POST /api/generate
+Ollama API -> AIService (ai_service.py): answer text
+AIService (ai_service.py) -> Flask app (app.py): answer
+Flask app (app.py) -> Browser: JSON {answer, chart}
+Browser -> User: Render response + chart
