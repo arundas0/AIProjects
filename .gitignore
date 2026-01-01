@@ -8,4 +8,4 @@ __pycache__/
 .vscode/
 
 # Data files
-./AppleHealthAnalyzer/health_data/export.xml
+AppleHealthAnalyzer/health_data/
