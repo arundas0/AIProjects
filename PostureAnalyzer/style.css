@@ -1,11 +1,15 @@
 /* GLOBAL DYSTOPIAN/SPORT VIBE */
 @import url('https://fonts.googleapis.com/css2?family=Teko:wght@300;400;500;600;700&family=Rajdhani:wght@500;600;700&display=swap');
 
-html, body, [class*="css"] {
+html,
+body,
+[class*="css"] {
     font-family: 'Rajdhani', sans-serif;
 }
 
-h1, h2, h3 {
+h1,
+h2,
+h3 {
     font-family: 'Teko', sans-serif;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -28,6 +32,7 @@ h1, h2, h3 {
     text-align: center;
     margin-bottom: 2rem;
 }
+
 .hero-title {
     font-size: 5rem;
     font-weight: 700;
@@ -37,6 +42,7 @@ h1, h2, h3 {
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
+
 .hero-subtitle {
     color: var(--neon-green);
     font-size: 1.5rem;
@@ -52,8 +58,9 @@ h1, h2, h3 {
     border-radius: 16px;
     padding: 0;
     overflow: hidden;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
+
 .card-header {
     background: #334155;
     padding: 0.5rem 1rem;
@@ -64,6 +71,7 @@ h1, h2, h3 {
     display: flex;
     justify-content: space-between;
 }
+
 .card-body {
     padding: 1.5rem;
 }
@@ -79,12 +87,14 @@ h1, h2, h3 {
     max-width: 150px;
     margin: 0 auto;
 }
+
 .ovr-value {
     font-size: 4rem;
     font-weight: 700;
     line-height: 1;
     font-family: 'Teko', sans-serif;
 }
+
 .ovr-label {
     font-size: 1rem;
     font-weight: 600;
@@ -98,6 +108,7 @@ h1, h2, h3 {
     padding: 0.8rem;
     margin-bottom: 0.5rem;
 }
+
 .stat-label {
     color: #94a3b8;
     font-size: 0.8rem;
@@ -106,6 +117,7 @@ h1, h2, h3 {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
 .stat-value {
     color: white;
     font-size: 1.4rem;
@@ -124,6 +136,7 @@ h1, h2, h3 {
     position: relative;
     line-height: 1.6;
 }
+
 .coach-tablet::before {
     content: "AI_COACH_V3.0 // ANALYZING...";
     position: absolute;
@@ -144,6 +157,14 @@ h1, h2, h3 {
 }
 
 /* HIDE STREAMLIT CHROME */
-header {visibility: hidden;}
-footer {visibility: hidden;}
-.block-container {padding-top: 1rem;}
+header {
+    visibility: hidden;
+}
+
+footer {
+    visibility: hidden;
+}
+
+.block-container {
+    padding-top: 1rem;
+}
