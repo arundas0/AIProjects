@@ -51,10 +51,11 @@ class GeminiFeedbackGenerator:
         torso_score: int,
         foot_score: int,
         consistency_score: int,
-        total_score: int
+        total_score: int,
+        image_path: Optional[str] = None
     ) -> Optional[str]:
         """
-        Generate personalized coaching feedback based on running metrics.
+        Generate personalized coaching feedback based on running metrics and visual analysis.
         
         Returns None if Gemini is not available.
         """
@@ -63,7 +64,7 @@ class GeminiFeedbackGenerator:
         
         prompt = f"""You are an expert running coach providing personalized feedback.
 
-Analyze this runner's form metrics and scores:
+Analyze this runner's form based on the provided metrics and the visual snapshot of their running stride (if available).
 
 **Measurements:**
 - Knee angle at ground contact: {avg_knee_angle:.1f}° (ideal: 160-175°)
@@ -77,8 +78,14 @@ Analyze this runner's form metrics and scores:
 - Consistency: {consistency_score}/25
 - **Total: {total_score}/100**
 
-Provide 2-3 sentences of personalized, actionable coaching advice. Focus on:
-1. The most important area to improve (if any)
+**Visual Analysis (from image):**
+Look at the provided image (which captures the ground contact phase) and also analyze:
+- **Arm Carriage:** Are arms relaxed? Elbows driving back?
+- **Head Position:** Looking forward? Neck relaxed?
+- **Facial Tension:** Is the runner straining?
+
+Provide bulleted personalized, actionable coaching advice to the runner (age 10-12, focusing on 1500m-3000m distances). Focus on:
+1. The most important area to improve (metrics or visual)
 2. A specific drill or cue they can use
 3. Positive reinforcement for what they're doing well
 
@@ -86,9 +93,16 @@ Be encouraging but honest. Speak directly to the runner using "you/your"."""
 
         try:
             from config import GEMINI_MODEL
+            from PIL import Image
+            
+            contents = [prompt]
+            if image_path and os.path.exists(image_path):
+                image = Image.open(image_path)
+                contents.append(image)
+                
             response = self.client.models.generate_content(
                 model=GEMINI_MODEL,
-                contents=prompt
+                contents=contents
             )
             return response.text.strip()
         except Exception as e:

@@ -30,3 +30,20 @@ SCORE_WEIGHT_KNEE = 25
 SCORE_WEIGHT_TORSO = 25
 SCORE_WEIGHT_FOOT = 25
 SCORE_WEIGHT_CONSISTENCY = 25
+
+# =============================================================================
+# Pro Athlete Benchmark (Elite Distance Runner Profile)
+# =============================================================================
+PRO_ATHLETE_STATS = {
+    "knee_angle": 165,      # Optimal flexion for power/efficiency
+    "torso_lean": 10,       # Perfect forward drive
+    "foot_position": 0,     # Direct center of mass impact
+    "consistency": 95       # Extremely consistent form
+}
+
+# Normalization ranges for radar chart (min/max reasonable values)
+RADAR_RANGES = {
+    "knee_angle": (130, 180),
+    "torso_lean": (-5, 30),
+    "foot_position": (-30, 30)
+}

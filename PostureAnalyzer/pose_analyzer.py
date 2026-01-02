@@ -225,10 +225,30 @@ class PoseAnalyzer:
         out.release()
         detector.close()
         
+        # Convert to H.264 for browser compatibility
+        final_output_path = self._convert_to_h264(output_path)
+        
         # Aggregate metrics
+        key_frame_path = None
+        
         if frame_metrics_list:
             contact_frames = [m for m in frame_metrics_list if m.is_ground_contact] or frame_metrics_list
             
+            # Find the "best" contact frame (e.g. middle of the first contact phase) to save as key image
+            best_frame_idx = contact_frames[0].frame_number # Default to first
+            if len(contact_frames) > 2:
+                 # Simple heuristic: take the 3rd contact frame if available to avoid blur/transition
+                 best_frame_idx = contact_frames[min(len(contact_frames)-1, 2)].frame_number
+            
+            # Extract and save key frame
+            cap = cv2.VideoCapture(video_path)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, best_frame_idx)
+            ret, frame = cap.read()
+            if ret:
+                key_frame_path = tempfile.mktemp(suffix='.jpg')
+                cv2.imwrite(key_frame_path, frame)
+            cap.release()
+
             avg_knee = np.mean([m.knee_angle for m in contact_frames])
             avg_lean = np.mean([m.torso_lean for m in frame_metrics_list])
             avg_foot = np.mean([m.foot_ahead_of_hip for m in contact_frames])
@@ -255,4 +275,22 @@ class PoseAnalyzer:
                 frame_metrics=[]
             )
         
-        return output_path, running_metrics
+        return final_output_path, running_metrics, key_frame_path
+
+    def _convert_to_h264(self, input_path: str) -> str:
+        """Convert video to H.264 using ffmpeg for browser compatibility"""
+        import subprocess
+        
+        output_path = tempfile.mktemp(suffix='.mp4')
+        try:
+            subprocess.run([
+                'ffmpeg', '-y',
+                '-i', input_path,
+                '-vcodec', 'libx264',
+                '-f', 'mp4',
+                output_path
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return output_path
+        except Exception as e:
+            print(f"Warning: ffmpeg conversion failed: {e}")
+            return input_path

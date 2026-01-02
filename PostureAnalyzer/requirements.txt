@@ -3,3 +3,5 @@ mediapipe
 opencv-python
 numpy
 google-genai
+plotly
+Pillow
